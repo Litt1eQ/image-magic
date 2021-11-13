@@ -1,0 +1,25 @@
+[package]
+name = "image-magic"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[lib]
+name = "image_magic"
+crate-type = ["cdylib"]
+
+[dependencies]
+pyo3 = { version = "0.14", features = ["extension-module"] }
+photon-rs = "0.3.1" # 图片效果
+anyhow = "1" # 错误处理
+base64 = "0.13" # base64 编码/解码
+bytes = "1" # 处理字节流
+image = "0.23" # 处理图片
+lazy_static = "1" # 通过宏更方便地初始化静态变量
+imageproc = "0.22.0"
+img_hash = "3.0"
+rustc-serialize = "0.3.22"
+
+[build-dependencies]
+pyo3-build-config = "0.14" # Python构建所用的库
