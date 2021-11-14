@@ -1,7 +1,7 @@
 use pyo3::{prelude::*};
 
 use std::f64::consts::{SQRT_2, PI};
-use image::{DynamicImage, GenericImageView};
+use image::{DynamicImage, GenericImageView, ImageBuffer, GrayImage};
 use crate::image_utils::rgb_diff;
 use std::cmp::{min, max};
 
@@ -122,15 +122,16 @@ impl AggregateMountain {
         if self.is_last {
             return;
         }
-        let next_start_x = left_top_x / 5;
+        let mut next_start_x = left_top_x / 5;
         let mut next_start_y = left_top_y / 5;
 
         let mut next_end_x = (right_bottom_x + 4) / 5;
         let mut next_end_y = (right_bottom_y + 4) / 5;
 
+
         if left_top_x % 5 != 0 {
             if next_start_x < 1 {
-                next_end_x = 0;
+                next_start_x = 0;
             }
         }
 
@@ -138,14 +139,13 @@ impl AggregateMountain {
             if next_start_y < 1 {
                 next_start_y = 0;
             }
-            // next_start_y = max(next_start_y - 1, 0);
         }
 
         if right_bottom_x % 5 != 0 {
             next_end_x = min(next_end_x + 1, self.next.as_ref().unwrap().width - 1);
         }
 
-        if right_bottom_x % 5 != 0 {
+        if right_bottom_y % 5 != 0 {
             next_end_y = min(next_end_y + 1, self.next.as_ref().unwrap().height - 1);
         }
 
@@ -178,7 +178,7 @@ impl AggregateMountain {
             return;
         }
         let next_width = (self.width + 4) / 5;
-        let next_height = (self.width + 4) / 5;
+        let next_height = (self.height + 4) / 5;
         let next_data = vec![vec![0; next_height]; next_width];
 
         self.next = Option::from(Box::new(AggregateMountain::new(next_data, next_width, next_height)));
@@ -196,7 +196,6 @@ struct Rectangle {
 
 impl Rectangle {
     pub fn rectangle_range(x: usize, y: usize, slice_size: usize, total_width: usize, total_height: usize) -> Rectangle {
-        // println!("x = {}, y = {}, slice_size = {}, width = {}, height = {}", x, y, slice_size, total_width, total_height);
         let half_slice_size = slice_size / 2;
         let top_x = if x > half_slice_size {
             x - half_slice_size
@@ -233,6 +232,26 @@ pub fn sqrt(x: usize) -> usize {
         a = a + 1;
     }
     return (a - 1) as usize;
+}
+
+fn _save_image(diff_data: &Vec<Vec<u64>>, width: usize, height: usize) {
+    let mut img: GrayImage = ImageBuffer::new(width as u32, height as u32);
+    let mut max_diff = 0;
+    for i in 0..width {
+        for j in 0..height {
+            if max_diff < diff_data[i][j] {
+                max_diff = diff_data[i][j];
+            }
+        }
+    }
+    for i in 0..width {
+        for j in 0..height {
+            let rgb = diff_data[i][j] * 255 / max_diff;
+            let rgb_gray = (rgb << 24 | rgb << 16 | rgb << 8 | rgb) as u8;
+            img.put_pixel(i as u32, j as u32, image::Pixel::from_channels(rgb_gray, rgb_gray, rgb_gray, 100));
+        }
+    }
+    // img.save("./src/images/gray_image.png").unwrap();
 }
 
 
@@ -318,6 +337,16 @@ fn adjust_center_point(top_xy: XY, mountain: &AggregateMountain, result: &Hillto
     xy
 }
 
+fn _vec_hash(data: &Vec<Vec<u64>>, width: usize, height: usize) -> f64 {
+    let mut hash = 0.0;
+    for i in 0..width {
+        for j in 0..height {
+            hash += data[i][j] as f64;
+        }
+    }
+    hash
+}
+
 pub fn find_top_n(mut result: HilltopParamAndResult) -> Vec<Point> {
     // 挑战图的宽和高
     let width = result.challenge_image.width() as usize;
@@ -370,9 +399,9 @@ pub fn find_top_n(mut result: HilltopParamAndResult) -> Vec<Point> {
 
 fn trip_aggregate_mountain(mountain: &mut AggregateMountain, top_xy: XY, result: &HilltopParamAndResult, result_width: usize, result_height: usize) {
     let start_x = max(top_xy.x - result.ch_size as usize / 2, 0);
-    let end_x = max(top_xy.x + result.ch_size as usize / 2, (result_width - 1) as usize);
+    let end_x = min(top_xy.x + result.ch_size as usize / 2, (result_width - 1) as usize);
     let start_y = max(top_xy.y - result.ch_size as usize / 2, 0);
-    let end_y = max(top_xy.y + result.ch_size as usize / 2, (result_height - 1) as usize);
+    let end_y = min(top_xy.y + result.ch_size as usize / 2, (result_height - 1) as usize);
 
     let mut max_diff = 0;
     for x in start_x..=end_x {
@@ -393,7 +422,7 @@ fn trip_aggregate_mountain(mountain: &mut AggregateMountain, top_xy: XY, result:
             // y = 1- x*x / 2.25 权值衰减函数，为2次函数，要求命中坐标: (0,1) (1.5,0)
             // 当距离为0的时候，衰减权重为1，当距离为1.5的时候，衰减权重为0
             // 当距离为1的时候， 衰减权重为：1- 1/2.25 = 0.55
-            mountain.diff_data[x][y] = (mountain.diff_data[x][y] as f64 - max_diff as f64 * (1.0 - distance_ratio * distance_ratio / 2.25)) as u64;
+            mountain.diff_data[x][y] = (mountain.diff_data[x][y] as f64 - (max_diff as f64 * (1.0 - distance_ratio * distance_ratio / 2.25))) as u64;
 
             // 这块逻辑我也没测试到走这块，有可能有特定的图可能会overflow吧，目前没测试到, 如果存usize的话, 这块是不会走的
             // if mountain.diff_data[x][y] < 0 {
@@ -410,9 +439,9 @@ mod tests {
 
     #[test]
     fn test() {
-        let bg_image = image::open("./src/images/out_mask.png").unwrap();
-        let cg_image = image::open("./src/images/img.png").unwrap();
-        let result = HilltopParamAndResult::new(bg_image, cg_image, 25, 1);
+        let bg_image = image::open("./src/images/bg_image.png").unwrap();
+        let cg_image = image::open("./src/images/cg_image.png").unwrap();
+        let result = HilltopParamAndResult::new(bg_image, cg_image, 75, 2);
         let result = find_top_n(result);
         println!("{}", result.len());
         println!("{:?}", result);
